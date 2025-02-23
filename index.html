@@ -115,7 +115,7 @@
                 gameInterval = setInterval(() => { if (gameRunning) shoot(); }, fireInterval); 
                 powerupInterval = setInterval(updatePowerupTimers, 1000); 
             } else {
-                stopButton.innerText = "Folytatás"; 
+                stopButton.innerText = "Szünet"; 
                 clearInterval(gameInterval); 
                 clearInterval(powerupInterval);
             }
