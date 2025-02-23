@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Shooter</title>
+    <style>
+        body { text-align: center; background: black; color: white; position: relative; overflow: hidden; }
+        canvas { background: #111; display: block; margin: 0 auto; }
+        button { padding: 10px 20px; font-size: 20px; }
+        #info { position: absolute; top: 10px; left: 10px; font-size: 24px; text-align: left; }
+        #lives, #powerups, #score, #shieldHitsDisplay { margin-bottom: 10px; }
+        #restartButton { display: none; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); }
+        #stopButton { position: absolute; top: 10px; right: 10px; }
+        #controls { position: absolute; top: 100px; right: 10px; width: 200px; background: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <div id="lives"></div>
+        <div id="powerups"></div>
+        <div id="score">Pontszám: 0</div>
+        <div id="shieldHitsDisplay">Pajzs találatok: 0</div>
+    </div>
+    <button id="startButton">Start</button>
+    <button id="restartButton" onclick="location.reload();">Új játék</button>
+    <button id="stopButton">Szünet</button>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="controls">
+        <h3>Irányítás</h3>
+        <p>⬅️ Balra: Nyíl balra</p>
+        <p>➡️ Jobbra: Nyíl jobbra</p>
+        <p>⬆️ Fel: Nyíl fel</p>
+        <p>⬇️ Le: Nyíl le</p>
+        <h3>Powerupok</h3>
+        <p>🛡 Pajzs: Véd a lövésektől 15 másodpercig</p>
+        <p>🔥 Dupla Lövés: Két lövedéket lő ki egyszerre így egy elpusztítja az ellenséget a másik pedig tovább megy</p>
+        <h3>Lövés</h3>
+        <p>A játékos hajója automatikusan lő</p>
+    </div>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const startButton = document.getElementById("startButton");
+        const restartButton = document.getElementById("restartButton");
+        const stopButton = document.getElementById("stopButton");
+        const livesDisplay = document.getElementById("lives");
+        const powerupsDisplay = document.getElementById("powerups");
+        const scoreDisplay = document.getElementById("score");
+        const shieldHitsDisplay = document.getElementById("shieldHitsDisplay");
+        
+        let player, bullets, enemies, enemyBullets, powerups, lives, gameRunning, stars;
+        let shieldTime = 0, fireRateTime = 0;
+        let fireInterval = 500; 
+        let keys = {};
+        let shieldHits = 0; 
+        let score = 0; 
+        let gameInterval; 
+        let powerupInterval; 
+        let bulletColor = "white"; 
+
+        const playerImg = new Image();
+        const enemyImg = new Image();
+        const shieldImg = new Image();
+        const powerupShieldImg = new Image();
+        const powerupFireImg = new Image();
+
+        playerImg.src = "ship.png"; 
+        enemyImg.src = "ufo.png"; 
+        shieldImg.src = "shield.png"; 
+        powerupShieldImg.src = "shield.png"; 
+        powerupFireImg.src = "ship1.png"; 
+
+        const powerupChance = 10; 
+
+        startButton.addEventListener("click", startGame);
+        stopButton.addEventListener("click", toggleGame);
+
+        function startGame() {
+            startButton.style.display = "none";
+            restartButton.style.display = "none";
+            stopButton.style.display = "block";
+            player = { x: 380, y: 500, width: 60, height: 40, speed: 4 };
+            bullets = [];
+            enemies = [];
+            enemyBullets = [];
+            powerups = [];
+            stars = Array.from({ length: 100 }, () => ({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                speed: Math.random() * 2 + 1
+            }));
+            lives = 3;
+            shieldTime = 0;
+            fireRateTime = 0;
+            shieldHits = 0; 
+            score = 0; 
+            bulletColor = "white"; 
+            updateLivesDisplay();
+            updatePowerupsDisplay();
+            updateScoreDisplay();
+            updateShieldHitsDisplay();
+            gameRunning = true;
+            spawnEnemies();
+            gameLoop();
+            gameInterval = setInterval(() => { if (gameRunning) shoot(); }, fireInterval);
+            powerupInterval = setInterval(updatePowerupTimers, 1000); 
+        }
+
+        function toggleGame() {
+            gameRunning = !gameRunning; 
+            if (gameRunning) {
+                stopButton.innerText = "Szünet"; 
+                gameLoop(); 
+                gameInterval = setInterval(() => { if (gameRunning) shoot(); }, fireInterval); 
+                powerupInterval = setInterval(updatePowerupTimers, 1000); 
+            } else {
+                stopButton.innerText = "Folytatás"; 
+                clearInterval(gameInterval); 
+                clearInterval(powerupInterval);
+            }
+        }
+
+        function updateLivesDisplay() {
+            livesDisplay.innerHTML = "❤️".repeat(lives);
+        }
+
+        function updatePowerupsDisplay() {
+            powerupsDisplay.innerHTML = `🛡 Pajzs: ${shieldTime} mp\n🔥 Dupla lövés: ${fireRateTime} mp`;
+        }
+
+        function updateScoreDisplay() {
+            scoreDisplay.innerHTML = `Pontszám: ${score}`;
+        }
+
+        function updateShieldHitsDisplay() {
+            shieldHitsDisplay.innerHTML = `Pajzs találatok: ${shieldHits}`;
+        }
+
+        function updatePowerupTimers() {
+            if (shieldTime > 0) {
+                shieldTime--;
+                if (shieldTime === 0) {
+                    shieldHits = 0; 
+                }
+            }
+            if (fireRateTime > 0) {
+                fireRateTime--;
+                if (fireRateTime === 0) {
+                    fireInterval = 500; 
+                    bulletColor = "white"; 
+                }
+            }
+            updatePowerupsDisplay();
+        }
+
+        function shoot() {
+            const bulletCount = fireRateTime > 0 ? 2 : 1; 
+            for (let i = 0; i < bulletCount; i++) {
+                bullets.push({ x: player.x + 18, y: player.y, width: 4, height: 10, color: bulletColor });
+            }
+        }
+
+        function enemyShoot() {
+            enemies.forEach(enemy => {
+                enemyBullets.push({ x: enemy.x + 10, y: enemy.y + 20, width: 4, height: 10 });
+            });
+        }
+
+        function spawnEnemies() {
+            setInterval(() => {
+                if (gameRunning) {
+                    let enemy = { 
+                        x: Math.random() * (canvas.width - 40), 
+                        y: 0, 
+                        width: 60, 
+                        height: 40,
+                        direction: Math.random() < 0.5 ? 1 : -1, 
+                        speed: 0.5 
+                    };
+                    enemies.push(enemy);
+                    enemyShoot();
+                }
+            }, 1000);
+        }
+
+        function gameLoop() {
+            if (!gameRunning) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawStars();
+            movePlayer();
+
+            ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+           
+            if (shieldTime > 0) ctx.drawImage(shieldImg, player.x - 5, player.y - 5, player.width + 10, player.height + 10);
+
+            bullets.forEach((bullet, index) => {
+                bullet.y -= 5; // Bullet speed
+                ctx.fillStyle = bullet.color; 
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+                if (bullet.y < 0) bullets.splice(index, 1);
+            });
+
+            enemyBullets.forEach((bullet, index) => {
+                bullet.y += 4;
+                ctx.fillStyle = "red";
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+                if (bullet.y > canvas.height) enemyBullets.splice(index, 1);
+            });
+
+            enemies.forEach((enemy, index) => {
+                enemy.y += 2;
+                enemy.x += enemy.direction * enemy.speed;
+
+                if (enemy.x <= 0 || enemy.x >= canvas.width - enemy.width) {
+                    enemy.direction *= -1; 
+                }
+
+                ctx.drawImage(enemyImg, enemy.x, enemy.y, enemy.width, enemy.height);
+                if (enemy.y > canvas.height) {
+                    enemies.splice(index, 1);
+                }
+            });
+
+            powerups.forEach((powerup, index) => {
+                powerup.y += 2;
+                ctx.drawImage(powerup.type === "shield" ? powerupShieldImg : powerupFireImg, powerup.x, powerup.y, 20, 20);
+                if (powerup.y > canvas.height) powerups.splice(index, 1);
+            });
+
+            checkCollisions();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function drawStars() {
+            ctx.fillStyle = "white";
+            stars.forEach(star => {
+                ctx.fillRect(star.x, star.y, 2, 2);
+                star.y += star.speed;
+                if (star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        function checkCollisions() {
+            bullets.forEach((bullet, bulletIndex) => {
+                enemies.forEach((enemy, enemyIndex) => {
+                    if (bullet.x < enemy.x + enemy.width && bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height && bullet.y + bullet.height > enemy.y) {
+                        bullets.splice(bulletIndex, 1);
+                        enemies.splice(enemyIndex, 1);
+                        score += 10; 
+                        updateScoreDisplay(); 
+                        
+                        if (Math.random() * 100 < powerupChance) {
+                            const powerupType = Math.random() < 0.5 ? "shield" : "fire";
+                            powerups.push({ x: enemy.x, y: enemy.y, type: powerupType });
+                        }
+                    }
+                });
+            });
+
+            enemyBullets.forEach((bullet, index) => {
+                if (bullet.x < player.x + player.width && bullet.x + bullet.width > player.x &&
+                    bullet.y < player.y + player.height && bullet.y + bullet.height > player.y) {
+                    if (shieldTime === 0) { 
+                        lives--;
+                        updateLivesDisplay();
+                        enemyBullets.splice(index, 1); 
+                        if (lives <= 0) {
+                            gameRunning = false;
+                            stopButton.style.display = "none"; 
+                            restartButton.style.display = "block"; 
+                        }
+                    } else {
+                        shieldHits++;
+                        updateShieldHitsDisplay(); 
+                        enemyBullets.splice(index, 1);
+                        if (shieldHits >= 3) { 
+                            shieldTime = 0; 
+                            shieldHits = 0; 
+                        }
+                    }
+                }
+            });
+
+            powerups.forEach((powerup, index) => {
+                if (powerup.x < player.x + player.width && powerup.x + 20 > player.x &&
+                    powerup.y < player.y + player.height && powerup.y + 20 > player.y) {
+                    if (powerup.type === "shield") {
+                        shieldTime = 15; 
+                        shieldHits = 0; 
+                    } else {
+                        fireRateTime = 10;
+                        fireInterval = 250; 
+                        bulletColor = "yellow"; 
+                    }
+                    updatePowerupsDisplay();
+                    powerups.splice(index, 1);
+                }
+            });
+        }
+
+        function movePlayer() {
+            if (keys["ArrowLeft"] && player.x > 0) {
+                player.x -= player.speed;
+            }
+            if (keys["ArrowRight"] && player.x < canvas.width - player.width) {
+                player.x += player.speed;
+            }
+            if (keys["ArrowUp"] && player.y > 0) {
+                player.y -= player.speed;
+            }
+            if (keys["ArrowDown"] && player.y < canvas.height - player.height) {
+                player.y += player.speed;
+            }
+        }
+
+        document.addEventListener("keydown", event => keys[event.key] = true);
+        document.addEventListener("keyup", event => keys[event.key] = false);
+    </script>   
+</body>
+</html>
